@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Map Camera Pro</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{--accent:#3a6df0;--ink:#16161f;--muted:#7b7f94;--glass:rgba(255,255,255,.55);--glass-strong:rgba(255,255,255,.8);--line:rgba(255,255,255,.8);--danger:#ef4a6b;--ok:#22c58b}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html{height:100%;background:#eef1fb}
+body{height:100%;font-family:'Outfit',system-ui,sans-serif;color:var(--ink);overflow:hidden;user-select:none;-webkit-user-select:none;position:relative}
+body::before{content:"";position:fixed;inset:-20%;background:radial-gradient(circle at 20% 20%,#fff 0,transparent 40%),radial-gradient(circle at 80% 30%,#dfe8ff 0,transparent 45%),radial-gradient(circle at 50% 90%,#f7e9ff 0,transparent 45%);z-index:-1;animation:drift 18s ease-in-out infinite alternate}
+@keyframes drift{to{transform:translate(3%,-2%) rotate(3deg)}}
+.glass{background:var(--glass);backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);border:1px solid var(--line);box-shadow:0 10px 40px rgba(40,50,120,.12),inset 0 1px 0 rgba(255,255,255,.9)}
+[data-icon] svg,.ico svg{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.ico{width:22px;height:22px;display:inline-flex;flex-shrink:0}
+
+.screen{position:absolute;inset:0;display:none;flex-direction:column;padding:calc(env(safe-area-inset-top) + 16px) 16px 120px}
+.screen.active{display:flex}
+.title{font-size:26px;font-weight:700;letter-spacing:-.3px}
+.sub{font-size:13px;color:var(--muted);margin-top:2px}
+.head-row{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.scroll{flex:1;min-height:0;overflow-y:auto;padding-bottom:12px}
+
+/* camera */
+#camera{padding:0;background:#0b0c12}
+#video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform .3s}
+#preview{position:absolute;left:0;right:0;bottom:116px;width:100%;pointer-events:none}
+.cam-top{position:absolute;top:calc(env(safe-area-inset-top) + 12px);left:12px;right:12px;display:flex;justify-content:space-between;align-items:center;z-index:5}
+.pill{display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:30px;font-size:12px;font-weight:500;color:#fff;background:rgba(15,16,25,.45);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.2)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ok);animation:ping 1.6s infinite}
+@keyframes ping{70%{box-shadow:0 0 0 8px rgba(34,197,139,0)}0%{box-shadow:0 0 0 0 rgba(34,197,139,.6)}}
+.round-btn{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;color:#fff;background:rgba(15,16,25,.45);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.2);cursor:pointer}
+.round-btn svg{width:20px;height:20px}
+.zoom-row{position:absolute;bottom:196px;left:50%;transform:translateX(-50%);display:flex;gap:6px;z-index:5;padding:5px;border-radius:30px;background:rgba(15,16,25,.45);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.zoom-row button{width:38px;height:38px;border-radius:50%;border:none;background:transparent;color:#fff;font:600 12px 'Outfit';cursor:pointer}
+.zoom-row button.on{background:#fff;color:var(--ink)}
+.shutter-wrap{position:absolute;bottom:calc(env(safe-area-inset-bottom) + 104px);left:0;right:0;display:flex;justify-content:center;z-index:5}
+.shutter{width:80px;height:80px;border-radius:50%;padding:5px;background:rgba(255,255,255,.25);border:1px solid rgba(255,255,255,.6);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);cursor:pointer}
+.shutter .core{width:100%;height:100%;border-radius:50%;background:#fff;filter:url(#liquid);transition:transform .15s,background .2s}
+.shutter.press .core{transform:scale(.88);background:#dfe6ff}
+#flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:300}
+#flash.go{animation:fl .45s ease-out}
+@keyframes fl{0%{opacity:.9}100%{opacity:0}}
+
+/* dock */
+#dock{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 14px);height:72px;padding:8px;display:flex;gap:6px;border-radius:40px;z-index:50}
+#blob{position:absolute;top:50%;left:0;width:56px;height:56px;margin-top:-28px;transition:transform .55s cubic-bezier(.34,1.56,.64,1);pointer-events:none}
+#blob-fill{position:absolute;inset:0;border-radius:50%;background:linear-gradient(160deg,rgba(255,255,255,.98),rgba(205,220,255,.75));box-shadow:0 6px 18px rgba(58,109,240,.3),inset 0 1px 2px #fff;filter:url(#liquid);transition:transform .35s cubic-bezier(.34,1.56,.64,1)}
+#dock.long #blob-fill{transform:scale(1.18)}
+.nav-btn{position:relative;z-index:1;width:56px;height:56px;border-radius:50%;border:none;background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer;touch-action:none}
+.nav-btn.active{color:var(--accent)}
+.nav-btn .ico{width:22px;height:22px}
+#nav-label{position:absolute;top:-34px;left:50%;transform:translateX(-50%);font-size:11px;font-weight:600;background:var(--ink);color:#fff;padding:5px 11px;border-radius:12px;opacity:0;transition:opacity .2s;white-space:nowrap;pointer-events:none}
+#dock.long #nav-label{opacity:1}
+
+/* templates */
+.tpl-grid{flex:1;min-height:0;overflow-y:auto;display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px;padding-bottom:12px}
+.tpl{border-radius:22px;padding:10px;cursor:pointer;position:relative;transition:transform .2s}
+.tpl:active{transform:scale(.97)}
+.tpl canvas{width:100%;height:auto;display:block;border-radius:14px}
+.tpl .name{font-size:13px;font-weight:600;margin-top:8px}
+.tpl .check{position:absolute;top:16px;right:16px;width:24px;height:24px;border-radius:50%;background:#fff;display:none;place-items:center;color:var(--accent);box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.tpl .check svg{width:14px;height:14px;stroke-width:3}
+.tpl.sel{outline:2px solid var(--accent);outline-offset:-2px}
+.tpl.sel .check{display:grid}
+
+/* gallery */
+.btn-ghost{border:none;padding:9px 14px;border-radius:14px;font:500 12px 'Outfit';color:var(--ink);cursor:pointer;background:var(--glass-strong)}
+#grid{flex:1;min-height:0;overflow-y:auto;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:16px;padding-bottom:12px;align-content:start}
+.thumb{position:relative;aspect-ratio:1;border-radius:16px;overflow:hidden;cursor:pointer;box-shadow:0 4px 14px rgba(40,50,120,.12)}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb .chip{position:absolute;left:6px;right:6px;bottom:6px;font-size:10px;font-weight:500;color:#fff;background:rgba(15,16,25,.5);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);padding:3px 7px;border-radius:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px}
+.thumb .chip .ico{width:11px;height:11px}
+.empty{flex:1;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:var(--muted);padding:40px}
+.empty .ico{width:56px;height:56px;margin-bottom:12px;opacity:.5}
+
+/* map */
+#map{flex:1;min-height:0;border-radius:24px;overflow:hidden;margin-top:14px}
+.seg{display:inline-flex;padding:4px;border-radius:14px;gap:4px}
+.seg button{border:none;background:transparent;padding:7px 12px;border-radius:10px;font:500 12px 'Outfit';color:var(--muted);cursor:pointer}
+.seg button.on{background:#fff;color:var(--ink);box-shadow:0 2px 8px rgba(0,0,0,.08)}
+
+/* settings */
+.set{border-radius:22px;overflow:hidden;margin-top:14px}
+.set-h{padding:12px 16px;font-size:11px;letter-spacing:.9px;text-transform:uppercase;color:var(--muted);font-weight:600;border-bottom:1px solid rgba(0,0,0,.05)}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 16px;border-bottom:1px solid rgba(0,0,0,.05)}
+.row:last-child{border-bottom:none}
+.row .lbl{font-size:14px;font-weight:500}
+.val{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)}
+.tog{width:46px;height:28px;border-radius:14px;background:#d6dbea;position:relative;border:none;cursor:pointer;transition:background .25s;flex-shrink:0}
+.tog::after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.2);transition:transform .3s cubic-bezier(.34,1.56,.64,1)}
+.tog.on{background:var(--accent)}
+.tog.on::after{transform:translateX(18px)}
+.field{width:100%;border:1px solid rgba(0,0,0,.08);background:rgba(255,255,255,.85);border-radius:12px;padding:10px 12px;font:14px 'JetBrains Mono',monospace;color:var(--ink);outline:none}
+.field:focus{border-color:var(--accent)}
+.lab{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px;display:block}
+.btn-main{flex:2;border:none;border-radius:14px;padding:13px;background:var(--ink);color:#fff;font:600 14px 'Outfit';cursor:pointer}
+.btn-alt{flex:1;border:none;border-radius:14px;padding:13px;background:var(--glass-strong);color:var(--ink);font:600 14px 'Outfit';cursor:pointer}
+.unit{display:flex;border-radius:10px;overflow:hidden;border:1px solid rgba(0,0,0,.08)}
+.unit button{border:none;padding:6px 12px;font:600 12px 'JetBrains Mono',monospace;background:transparent;color:var(--muted);cursor:pointer}
+.unit button.on{background:var(--ink);color:#fff}
+#loc-map{height:180px;border-radius:14px;margin:10px 0}
+
+/* modal */
+#modal{position:fixed;inset:0;background:rgba(20,22,40,.35);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);z-index:200;display:none;align-items:flex-end;justify-content:center}
+#modal.open{display:flex;animation:fade .25s}
+@keyframes fade{from{opacity:0}}
+#sheet{width:100%;max-width:520px;border-radius:28px 28px 0 0;padding:14px 14px calc(env(safe-area-inset-bottom) + 14px);animation:up .4s cubic-bezier(.2,.9,.3,1.1)}
+@keyframes up{from{transform:translateY(100%)}}
+#sheet .grab{width:44px;height:5px;border-radius:3px;background:rgba(0,0,0,.15);margin:0 auto 12px}
+#sheet img{width:100%;border-radius:18px;display:block}
+#sheet .meta{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);margin:12px 4px;line-height:1.7}
+.act{display:flex;gap:8px}
+.act button{flex:1;border:none;border-radius:16px;padding:13px 6px;font:600 13px 'Outfit';cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px}
+.act .ico{width:18px;height:18px}
+
+#toast{position:fixed;top:calc(env(safe-area-inset-top) + 14px);left:50%;transform:translate(-50%,-140px);padding:10px 18px;border-radius:24px;font-size:13px;font-weight:600;z-index:999;transition:transform .45s cubic-bezier(.34,1.56,.64,1);white-space:nowrap;color:var(--ink)}
+#toast.show{transform:translate(-50%,0)}
+.leaflet-popup-content{font-family:'Outfit',sans-serif;margin:8px}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="liquid" x="-25%" y="-25%" width="150%" height="150%">
+    <feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" seed="4" result="n"/>
+    <feDisplacementMap id="disp" in="SourceGraphic" in2="n" scale="0" xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+</svg>
+
+<div id="toast" class="glass"></div>
+<div id="flash"></div>
+
+<!-- CAMERA -->
+<section class="screen active" id="camera">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="preview" width="1000" height="520"></canvas>
+  <div class="cam-top">
+    <div class="pill"><span class="dot"></span><span id="gps-text">Locating…</span></div>
+    <button class="round-btn" id="flip-btn" data-icon="flip" aria-label="Camera badlein"></button>
+  </div>
+  <div class="zoom-row">
+    <button data-zoom="1" class="on">1x</button>
+    <button data-zoom="2">2x</button>
+    <button data-zoom="3">3x</button>
+  </div>
+  <div class="shutter-wrap">
+    <button class="shutter" id="shutter" aria-label="Photo lo"><div class="core"></div></button>
+  </div>
+</section>
+
+<!-- TEMPLATES -->
+<section class="screen" id="templates">
+  <div class="head-row">
+    <div><div class="title">Templates</div><div class="sub">Watermark ka style chuniye</div></div>
+  </div>
+  <div class="tpl-grid" id="tpl-grid"></div>
+</section>
+
+<!-- GALLERY -->
+<section class="screen" id="gallery">
+  <div class="head-row">
+    <div><div class="title">Collection</div><div class="sub" id="gcount">0 photos</div></div>
+    <button class="btn-ghost" id="clear-btn">Clear all</button>
+  </div>
+  <div id="grid"></div>
+  <div class="empty glass" id="empty" style="display:none;margin-top:16px;border-radius:22px">
+    <span class="ico" data-icon="gallery"></span>
+    <div style="font-size:15px;font-weight:600">Abhi koi photo nahin</div>
+    <div style="font-size:13px;margin-top:4px">Camera se pehli geotagged photo lijiye</div>
+  </div>
+</section>
+
+<!-- MAP -->
+<section class="screen" id="mapscr">
+  <div class="head-row">
+    <div><div class="title">Map</div><div class="sub">Aapki geotagged photos</div></div>
+    <div class="seg glass" id="layer-seg">
+      <button data-l="sat" class="on">Satellite</button>
+      <button data-l="street">Street</button>
+    </div>
+  </div>
+  <div id="map"></div>
+</section>
+
+<!-- SETTINGS -->
+<section class="screen" id="settings">
+  <div class="title">Settings</div>
+  <div class="sub">Location, watermark aur author</div>
+  <div class="scroll">
+    <div class="set glass">
+      <div class="set-h">Custom location</div>
+      <div style="padding:14px 16px">
+        <label class="lab">Location naam</label>
+        <input class="field" id="c-name" placeholder="e.g. Eiffel Tower, Paris">
+        <div id="loc-map"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+          <div><label class="lab">Latitude</label><input class="field" id="c-lat" placeholder="0.000000"></div>
+          <div><label class="lab">Longitude</label><input class="field" id="c-lng" placeholder="0.000000"></div>
+          <div><label class="lab">City</label><input class="field" id="c-city" placeholder="City"></div>
+          <div><label class="lab">Country</label><input class="field" id="c-country" placeholder="Country"></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button class="btn-main" id="apply-loc">Apply location</button>
+          <button class="btn-alt" id="use-gps">Use GPS</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="set glass">
+      <div class="set-h">Watermark</div>
+      <div class="row"><span class="lbl">Coordinates</span><button class="tog on" data-flag="coords"></button></div>
+      <div class="row"><span class="lbl">Date / Time</span><button class="tog on" data-flag="datetime"></button></div>
+      <div class="row"><span class="lbl">Weather</span><button class="tog on" data-flag="weather"></button></div>
+      <div class="row"><span class="lbl">Satellite map</span><button class="tog on" data-flag="map"></button></div>
+      <div class="row"><span class="lbl">Author naam (blue tick)</span><button class="tog" data-flag="author"></button></div>
+      <div class="row" style="flex-direction:column;align-items:stretch">
+        <label class="lab">Author naam</label>
+        <input class="field" id="author" placeholder="Aapka naam">
+      </div>
+      <div class="row"><span class="lbl">Temperature</span>
+        <div class="unit"><button data-unit="C" class="on">°C</button><button data-unit="F">°F</button></div>
+      </div>
+    </div>
+
+    <div class="set glass">
+      <div class="row"><span class="lbl">Current location</span><span class="val" id="cur-val">—</span></div>
+      <div class="row"><span class="lbl">Photos</span><span class="val" id="photos-count">0</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- DOCK -->
+<nav id="dock" class="glass">
+  <div id="blob"><div id="blob-fill"></div></div>
+  <button class="nav-btn active" data-tab="camera" aria-label="Camera"><span class="ico" data-icon="camera"></span></button>
+  <button class="nav-btn" data-tab="templates" aria-label="Templates"><span class="ico" data-icon="templates"></span></button>
+  <button class="nav-btn" data-tab="gallery" aria-label="Gallery"><span class="ico" data-icon="gallery"></span></button>
+  <button class="nav-btn" data-tab="mapscr" aria-label="Map"><span class="ico" data-icon="map"></span></button>
+  <button class="nav-btn" data-tab="settings" aria-label="Settings"><span class="ico" data-icon="settings"></span></button>
+  <div id="nav-label"></div>
+</nav>
+
+<!-- MODAL -->
+<div id="modal">
+  <div id="sheet" class="glass">
+    <div class="grab"></div>
+    <img id="m-img" alt="">
+    <div class="meta" id="m-meta"></div>
+    <div class="act">
+      <button id="m-dl" style="background:var(--accent);color:#fff"><span class="ico" data-icon="download"></span>Download</button>
+      <button id="m-del" style="background:rgba(239,74,107,.12);color:var(--danger)"><span class="ico" data-icon="trash"></span>Delete</button>
+      <button id="m-close" style="background:var(--glass-strong);color:var(--ink)"><span class="ico" data-icon="close"></span>Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
+/* ───────── ICONS (emoji ki jagah) ───────── */
+const ICONS = {
+  camera:'<path d="M4 8h3l2-2.5h6L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/>',
+  templates:'<rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/>',
+  gallery:'<rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="9" cy="9" r="1.8"/><path d="M21 15l-5-5L5 21"/>',
+  map:'<path d="M9 4L3 6.5v13.5L9 17.5l6 2.5 6-2.5V4l-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/>',
+  settings:'<line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="9" cy="7" r="2.2"/><circle cx="15" cy="17" r="2.2"/>',
+  pin:'<path d="M12 21s7-6.2 7-11.5a7 7 0 1 0-14 0C5 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
+  download:'<path d="M12 3v12m0 0l-4.5-4.5M12 15l4.5-4.5M4 21h16"/>',
+  trash:'<path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13"/>',
+  close:'<path d="M6 6l12 12M18 6L6 18"/>',
+  flip:'<path d="M3 12a9 9 0 0 1 15.5-6.2L21 8.5M21 3.5v5h-5M21 12a9 9 0 0 1-15.5 6.2L3 15.5M3 20.5v-5h5"/>',
+  check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>'
+};
+function hydrate(){ $$('[data-icon]').forEach(el => el.innerHTML = `<svg viewBox="0 0 24 24">${ICONS[el.dataset.icon]}</svg>`); }
+
+/* ───────── STATE ───────── */
+const TPL_NAMES = ['Classic Glass','Night Minimal','Satellite Card','Compact Pill'];
+const S = {
+  gps:{lat:null,lng:null,addr:'Locating…',city:'',country:''},
+  wx:{temp:null,wind:null,hum:null,press:null},
+  custom:null, curMap:null, tpl:0, photos:[], facing:'environment', zoom:1, unit:'C',
+  flags:{coords:true,datetime:true,weather:true,map:true,author:false},
+  author:'', sel:null, layer:'sat', lastFetch:0
+};
+let stream = null, lmap = null, ltile = null, lgroup = null, lsMap = null, lsMarker = null;
+
+/* ───────── UTIL ───────── */
+function toast(m){ const t=$('#toast'); t.textContent=m; t.classList.add('show'); clearTimeout(toast.t); toast.t=setTimeout(()=>t.classList.remove('show'),2300); }
+function esc(s){ return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function wobble(){ const d=$('#disp'); const t0=performance.now();
+  (function f(t){ const k=(t-t0)/700; if(k>=1){ d.setAttribute('scale',0); return; }
+    d.setAttribute('scale',(Math.sin(k*Math.PI)*22).toFixed(1)); requestAnimationFrame(f); })(t0); }
+function activeLoc(){ return S.custom || S.gps; }
+
+/* ───────── CAMERA ───────── */
+function applyVideoTransform(){ const m = S.facing==='user'?-1:1; $('#video').style.transform = `scale(${m*S.zoom},${S.zoom})`; }
+async function startCam(){
+  if(stream) stream.getTracks().forEach(t=>t.stop());
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:S.facing,width:{ideal:1920},height:{ideal:1080}},audio:false});
+    $('#video').srcObject = stream; applyVideoTransform();
+  }catch(e){ toast('Camera permission chahiye'); }
+}
+
+/* ───────── GPS + DATA ───────── */
+async function reverse(lat,lng){
+  try{
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&zoom=18&addressdetails=1&lat=${lat}&lon=${lng}`,{headers:{'Accept-Language':'en'}});
+    const j = await r.json(); const a = j.address||{};
+    return {
+      addr:(j.display_name||'').split(',').slice(0,3).map(s=>s.trim()).join(', ') || `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+      city:a.city||a.town||a.village||a.suburb||a.county||'', country:a.country||''
+    };
+  }catch(e){ return {addr:`${lat.toFixed(5)}, ${lng.toFixed(5)}`,city:'',country:''}; }
+}
+async function weather(lat,lng){
+  try{
+    const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,wind_speed_10m,relative_humidity_2m,surface_pressure&wind_speed_unit=kmh&timezone=auto`);
+    const c = (await r.json()).current||{};
+    S.wx = { temp:c.temperature_2m??null, wind:c.wind_speed_10m??null, hum:c.relative_humidity_2m??null, press:c.surface_pressure!=null?Math.round(c.surface_pressure):null };
+  }catch(e){}
+}
+function initGeo(){
+  if(!navigator.geolocation){ $('#gps-text').textContent='GPS support nahin'; return; }
+  navigator.geolocation.watchPosition(async p=>{
+    const {latitude:lat, longitude:lng, accuracy} = p.coords;
+    S.gps.lat=lat; S.gps.lng=lng;
+    $('#gps-text').textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)} · ±${Math.round(accuracy)}m`;
+    if(Date.now()-S.lastFetch > 20000){
+      S.lastFetch = Date.now();
+      const [info] = await Promise.all([reverse(lat,lng), weather(lat,lng)]);
+      Object.assign(S.gps, info);
+    }
+    refreshMap(); updateCurVal();
+  }, ()=>{ $('#gps-text').textContent='GPS permission off'; },
+  {enableHighAccuracy:true, maximumAge:5000, timeout:15000});
+}
+function updateCurVal(){ const l=activeLoc(); $('#cur-val').textContent = l.lat!=null ? `${l.lat.toFixed(5)}, ${l.lng.toFixed(5)}` : '—'; $('#photos-count').textContent = S.photos.length; }
+
+function currentData(){
+  const loc = activeLoc(); const now = new Date();
+  const off = -now.getTimezoneOffset(); const sg = off>=0?'+':'-';
+  const hh = String(Math.floor(Math.abs(off)/60)).padStart(2,'0'), mm = String(Math.abs(off)%60).padStart(2,'0');
+  return {
+    addr:loc.addr||'Unknown location', city:loc.city||'', country:loc.country||'',
+    lat:loc.lat, lng:loc.lng,
+    date:now.toLocaleDateString('en-GB'),
+    time:now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:true}),
+    tz:`GMT${sg}${hh}:${mm}`,
+    wx:{...S.wx}, unit:S.unit,
+    author: S.flags.author ? (S.author.trim() || 'Your Name') : '',
+    flags:{...S.flags}
+  };
+}
+
+/* ───────── SATELLITE MAP (3x3 tiles, accurate pin) ───────── */
+const tileCache = new Map();
+function tileOf(lat,lng,z){
+  const n=2**z, fx=(lng+180)/360*n, r=lat*Math.PI/180;
+  const fy=(1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*n;
+  const x=Math.floor(fx), y=Math.floor(fy);
+  return {x,y,px:fx-x,py:fy-y};
+}
+async function loadMap(lat,lng){
+  if(lat==null||lng==null) return null;
+  const z=17, t=tileOf(lat,lng,z), key=`${z}/${t.x}/${t.y}`;
+  let cv = tileCache.get(key);
+  if(!cv){
+    cv = document.createElement('canvas'); cv.width=cv.height=768;
+    const g = cv.getContext('2d'); g.fillStyle='#cfdcc8'; g.fillRect(0,0,768,768);
+    const jobs=[];
+    for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+      jobs.push(new Promise(res=>{
+        const im=new Image(); im.crossOrigin='anonymous';
+        const to=setTimeout(()=>res(),4000);
+        im.onload=()=>{ clearTimeout(to); g.drawImage(im,(dx+1)*256,(dy+1)*256,256,256); res(); };
+        im.onerror=()=>{ clearTimeout(to); res(); };
+        im.src=`https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${t.y+dy}/${t.x+dx}`;
+      }));
+    }
+    await Promise.all(jobs);
+    try{ cv.getContext('2d').getImageData(0,0,1,1); }catch(e){ return null; } // tainted = fallback
+    tileCache.set(key,cv);
+  }
+  return {cv, X:256+t.px*256, Y:256+t.py*256};
+}
+function refreshMap(){
+  const l=activeLoc(); if(l.lat==null) return;
+  loadMap(l.lat,l.lng).then(m=>{ S.curMap=m; refreshPreview(); }).catch(()=>{});
+}
+
+/* ───────── DRAW HELPERS ───────── */
+function fit(ctx,s,max){
+  if(ctx.measureText(s).width<=max) return s;
+  let t=s; while(t.length>1 && ctx.measureText(t+'…').width>max) t=t.slice(0,-1);
+  return t+'…';
+}
+function txt(ctx,str,x,y,maxW,font,color){
+  ctx.font=font; ctx.fillStyle=color; ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+  ctx.fillText(fit(ctx,str,maxW),x,y);
+}
+function drawMap(ctx,x,y,w,h,r,map,s){
+  ctx.save(); ctx.beginPath();
+  if(r>=Math.min(w,h)/2) ctx.arc(x+w/2,y+h/2,Math.min(w,h)/2,0,Math.PI*2);
+  else ctx.roundRect(x,y,w,h,r);
+  ctx.clip();
+  if(map){ const sz=300; ctx.drawImage(map.cv,map.X-sz/2,map.Y-sz/2,sz,sz,x,y,w,h); }
+  else { const g=ctx.createLinearGradient(x,y,x+w,y+h); g.addColorStop(0,'#2c4a3a'); g.addColorStop(1,'#1b2e26'); ctx.fillStyle=g; ctx.fillRect(x,y,w,h); }
+  const cx=x+w/2, cy=y+h/2;
+  ctx.fillStyle='rgba(58,109,240,.28)'; ctx.beginPath(); ctx.arc(cx,cy,16*s,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#3a6df0'; ctx.strokeStyle='#fff'; ctx.lineWidth=3*s;
+  ctx.beginPath(); ctx.arc(cx,cy,9*s,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+const fT=(t,u)=>t==null?'--':(u==='F'?(t*1.8+32).toFixed(1)+'°F':t.toFixed(1)+'°C');
+const fW=w=>w==null?'--':Math.round(w)+' km/h';
+const fH=h=>h==null?'--':h+'%';
+const fP=p=>p==null?'--':p+' hPa';
+function coordsStr(d){ return `Lat ${d.lat==null?'--':d.lat.toFixed(6)}   Long ${d.lng==null?'--':d.lng.toFixed(6)}`; }
+function wxStr(d){ return `${fW(d.wx.wind)}  ·  ${fH(d.wx.hum)}  ·  ${fP(d.wx.press)}  ·  ${fT(d.wx.temp,d.unit)}`; }
+
+function drawAuthor(ctx,W,H,s,name){
+  ctx.save();
+  ctx.font=`600 ${28*s}px Outfit, sans-serif`;
+  const tw=ctx.measureText(name).width, r=12*s, gap=10*s, total=r*2+gap+tw;
+  const x=(W-total)/2, y=H-30*s, cy=y-9*s;
+  ctx.shadowColor='rgba(0,0,0,.6)'; ctx.shadowBlur=8*s;
+  ctx.fillStyle='#1d9bf0'; ctx.beginPath(); ctx.arc(x+r,cy,r,0,Math.PI*2); ctx.fill();
+  ctx.shadowBlur=0; ctx.strokeStyle='#fff'; ctx.lineWidth=2.4*s; ctx.lineCap='round'; ctx.lineJoin='round';
+  ctx.beginPath(); ctx.moveTo(x+r-5*s,cy); ctx.lineTo(x+r-1.5*s,cy+3.5*s); ctx.lineTo(x+r+5*s,cy-4*s); ctx.stroke();
+  ctx.shadowColor='rgba(0,0,0,.6)'; ctx.shadowBlur=8*s; ctx.fillStyle='#fff';
+  ctx.fillText(name, x+r*2+gap, y);
+  ctx.restore();
+}
+
+/* ───────── STAMP TEMPLATES ───────── */
+function drawStamp(ctx,W,H,d,tpl,map){
+  const s=W/1000, F=d.flags;
+  if(!F.map) map=null;
+  const ink='#14151d', sub='#5a5e74', acc='#3a6df0';
+  const author=d.author;
+  const bottom = H - (author?78:34)*s;
+  const coordsOK = F.coords && d.lat!=null;
+  const dt = `${d.date}   ${d.time}   ${d.tz}`;
+  const wx = F.weather ? wxStr(d) : '';
+  const shortC = d.lat!=null ? `${d.lat.toFixed(5)}, ${d.lng.toFixed(5)}` : '--';
+
+  if(tpl===0){ // Classic Glass
+    const bh=250*s, x=34*s, w=W-68*s, y=bottom-bh;
+    ctx.save(); ctx.shadowColor='rgba(30,40,100,.28)'; ctx.shadowBlur=36*s; ctx.shadowOffsetY=10*s;
+    ctx.fillStyle='rgba(255,255,255,.88)'; ctx.beginPath(); ctx.roundRect(x,y,w,bh,30*s); ctx.fill(); ctx.restore();
+    const ms=bh-36*s; drawMap(ctx,x+18*s,y+18*s,ms,ms,24*s,map,s);
+    const tx=x+ms+54*s, mw=x+w-tx-24*s;
+    txt(ctx,d.addr,tx,y+78*s,mw,`600 ${40*s}px Outfit, sans-serif`,ink);
+    if(coordsOK) txt(ctx,coordsStr(d),tx,y+124*s,mw,`500 ${26*s}px "JetBrains Mono", monospace`,acc);
+    if(F.datetime) txt(ctx,dt,tx,y+166*s,mw,`400 ${24*s}px "JetBrains Mono", monospace`,sub);
+    if(wx) txt(ctx,wx,tx,y+212*s,mw,`500 ${22*s}px "JetBrains Mono", monospace`,ink);
+  }
+  else if(tpl===1){ // Night Minimal
+    const bh=180*s, x=36*s, y=bottom-bh;
+    const g=ctx.createLinearGradient(0,y-90*s,0,H); g.addColorStop(0,'rgba(0,0,0,0)'); g.addColorStop(1,'rgba(0,0,0,.72)');
+    ctx.fillStyle=g; ctx.fillRect(0,y-90*s,W,H-(y-90*s));
+    ctx.save(); ctx.shadowColor='rgba(0,0,0,.6)'; ctx.shadowBlur=10*s;
+    const ms=130*s; drawMap(ctx,x,y+6*s,ms,ms,ms/2,map,s);
+    const tx=x+ms+30*s, mw=W-tx-36*s;
+    txt(ctx,d.addr,tx,y+48*s,mw,`600 ${38*s}px Outfit, sans-serif`,'#fff');
+    if(coordsOK) txt(ctx,coordsStr(d),tx,y+94*s,mw,`500 ${24*s}px "JetBrains Mono", monospace`,'#fff');
+    if(F.datetime) txt(ctx,dt,tx,y+134*s,mw,`400 ${22*s}px "JetBrains Mono", monospace`,'rgba(255,255,255,.88)');
+    if(wx) txt(ctx,wx,tx,y+172*s,mw,`500 ${20*s}px "JetBrains Mono", monospace`,'#fff');
+    ctx.restore();
+  }
+  else if(tpl===2){ // Satellite Card
+    const bh=450*s, x=34*s, w=W-68*s, y=bottom-bh;
+    ctx.save(); ctx.shadowColor='rgba(30,40,100,.28)'; ctx.shadowBlur=36*s; ctx.shadowOffsetY=10*s;
+    ctx.fillStyle='rgba(255,255,255,.92)'; ctx.beginPath(); ctx.roundRect(x,y,w,bh,36*s); ctx.fill(); ctx.restore();
+    ctx.save(); ctx.beginPath(); ctx.roundRect(x,y,w,bh,36*s); ctx.clip();
+    drawMap(ctx,x,y,w,250*s,0,map,s);
+    ctx.restore();
+    ctx.save(); ctx.fillStyle='rgba(255,255,255,.94)'; ctx.beginPath(); ctx.roundRect(x+24*s,y+24*s,190*s,52*s,26*s); ctx.fill();
+    ctx.font=`600 ${22*s}px Outfit, sans-serif`; ctx.fillStyle=acc; ctx.textAlign='center'; ctx.fillText('SATELLITE',x+24*s+95*s,y+24*s+34*s); ctx.restore();
+    const tx=x+36*s, mw=w-72*s;
+    txt(ctx,d.addr,tx,y+300*s,mw,`600 ${38*s}px Outfit, sans-serif`,ink);
+    if(coordsOK) txt(ctx,coordsStr(d),tx,y+344*s,mw,`500 ${24*s}px "JetBrains Mono", monospace`,acc);
+    if(F.datetime) txt(ctx,dt,tx,y+384*s,mw,`400 ${22*s}px "JetBrains Mono", monospace`,sub);
+    if(wx) txt(ctx,wx,tx,y+424*s,mw,`500 ${20*s}px "JetBrains Mono", monospace`,ink);
+  }
+  else { // Compact Pill
+    const bh=130*s, x=34*s, w=W-68*s, y=bottom-bh;
+    ctx.save(); ctx.shadowColor='rgba(30,40,100,.25)'; ctx.shadowBlur=30*s; ctx.shadowOffsetY=8*s;
+    ctx.fillStyle='rgba(255,255,255,.92)'; ctx.beginPath(); ctx.roundRect(x,y,w,bh,bh/2); ctx.fill(); ctx.restore();
+    const ms=96*s; drawMap(ctx,x+17*s,y+17*s,ms,ms,ms/2,map,s);
+    const tx=x+17*s+ms+26*s, mw=x+w-tx-28*s;
+    txt(ctx,d.addr,tx,y+56*s,mw,`600 ${34*s}px Outfit, sans-serif`,ink);
+    const line2 = [coordsOK?shortC:'', F.datetime?d.time:''].filter(Boolean).join('   ·   ');
+    if(line2) txt(ctx,line2,tx,y+102*s,mw,`500 ${24*s}px "JetBrains Mono", monospace`,acc);
+  }
+  if(author) drawAuthor(ctx,W,H,s,author);
+}
+
+/* ───────── PREVIEW + TEMPLATES ───────── */
+function refreshPreview(){
+  const c=$('#preview'), g=c.getContext('2d');
+  g.clearRect(0,0,1000,520);
+  drawStamp(g,1000,520,currentData(),S.tpl,S.curMap);
+}
+function sampleData(){
+  return {...currentData(), addr:'Connaught Place, New Delhi', city:'New Delhi', country:'India',
+    lat:28.63145, lng:77.21671, date:'14/11/2026', time:'10:42:17 AM', tz:'GMT+05:30',
+    wx:{temp:24.5,wind:9,hum:58,press:1012}};
+}
+function renderTemplates(){
+  const grid=$('#tpl-grid');
+  grid.innerHTML = TPL_NAMES.map((n,i)=>`
+    <div class="tpl glass ${i===S.tpl?'sel':''}" data-t="${i}">
+      <canvas width="1000" height="560"></canvas>
+      <div class="check" data-icon="check"></div>
+      <div class="name">${n}</div>
+    </div>`).join('');
+  grid.querySelectorAll('canvas').forEach((c,i)=>{
+    const g=c.getContext('2d');
+    const gr=g.createLinearGradient(0,0,1000,560); gr.addColorStop(0,'#b9c9ff'); gr.addColorStop(1,'#e9cfff');
+    g.fillStyle=gr; g.fillRect(0,0,1000,560);
+    drawStamp(g,1000,560,sampleData(),i,null);
+  });
+  hydrate();
+}
+
+/* ───────── CAPTURE ───────── */
+async function capture(){
+  const v=$('#video');
+  if(!v.videoWidth){ toast('Camera ready nahin hai'); return; }
+  const W=v.videoWidth, H=v.videoHeight;
+  const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+  const ctx=cv.getContext('2d');
+  const sw=W/S.zoom, sh=H/S.zoom, sx=(W-sw)/2, sy=(H-sh)/2;
+  if(S.facing==='user'){ ctx.translate(W,0); ctx.scale(-1,1); }
+  ctx.drawImage(v,sx,sy,sw,sh,0,0,W,H);
+  ctx.setTransform(1,0,0,1,0,0);
+  const d=currentData();
+  drawStamp(ctx,W,H,d,S.tpl,S.curMap);
+  const url=cv.toDataURL('image/jpeg',0.93);
+  S.photos.unshift({id:Date.now(), url, d, tpl:S.tpl});
+  renderGallery(); updateCurVal();
+  const f=$('#flash'); f.classList.remove('go'); void f.offsetWidth; f.classList.add('go');
+  toast('Photo geotagged & saved');
+}
+
+/* ───────── GALLERY ───────── */
+function renderGallery(){
+  const g=$('#grid'), e=$('#empty');
+  $('#gcount').textContent = `${S.photos.length} photo${S.photos.length===1?'':'s'}`;
+  $('#photos-count').textContent = S.photos.length;
+  if(!S.photos.length){ g.innerHTML=''; e.style.display='flex'; return; }
+  e.style.display='none';
+  g.innerHTML = S.photos.map((p,i)=>`
+    <div class="thumb" data-i="${i}">
+      <img src="${p.url}" alt="">
+      <div class="chip"><span class="ico" data-icon="pin"></span>${esc(p.d.city||p.d.addr)}</div>
+    </div>`).join('');
+  hydrate();
+}
+function openModal(i){
+  S.sel=i; const p=S.photos[i], d=p.d;
+  $('#m-img').src=p.url;
+  $('#m-meta').innerHTML = `${esc(d.addr)}<br>${coordsStr(d)}<br>${d.date} · ${d.time} · ${d.tz}<br>${TPL_NAMES[p.tpl]}${d.author?' · '+esc(d.author):''}`;
+  $('#modal').classList.add('open');
+}
+function closeModal(){ $('#modal').classList.remove('open'); }
+
+/* ───────── MAP TAB ───────── */
+const TILES = {
+  sat:{url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',attr:'Esri'},
+  street:{url:'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',attr:'© CARTO © OpenStreetMap'}
+};
+function setLayer(k){
+  if(ltile) lmap.removeLayer(ltile);
+  ltile=L.tileLayer(TILES[k].url,{maxZoom:19,attribution:TILES[k].attr,subdomains:'abcd'}).addTo(lmap);
+  $$('#layer-seg button').forEach(b=>b.classList.toggle('on',b.dataset.l===k));
+  S.layer=k;
+}
+function renderMapMarkers(){
+  lgroup.clearLayers();
+  const icon=L.divIcon({className:'',html:`<div style="width:30px;height:30px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:#3a6df0;border:3px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,.3)"></div>`,iconSize:[30,30],iconAnchor:[15,30]});
+  S.photos.forEach(p=>{
+    if(p.d.lat==null) return;
+    L.marker([p.d.lat,p.d.lng],{icon}).bindPopup(`<img src="${p.url}" style="width:160px;border-radius:10px;display:block"><b>${esc(p.d.city||p.d.addr)}</b><br><small>${p.d.date} ${p.d.time}</small>`).addTo(lgroup);
+  });
+  if(S.gps.lat!=null) L.circleMarker([S.gps.lat,S.gps.lng],{radius:8,color:'#fff',weight:3,fillColor:'#22c58b',fillOpacity:1}).addTo(lgroup).bindPopup('Aap yahan hain');
+}
+function initMap(){
+  if(!lmap){
+    lmap=L.map('map',{zoomControl:false}).setView(S.gps.lat!=null?[S.gps.lat,S.gps.lng]:[20,0], S.gps.lat!=null?13:2);
+    L.control.zoom({position:'bottomright'}).addTo(lmap);
+    lgroup=L.layerGroup().addTo(lmap);
+  }
+  setLayer(S.layer); renderMapMarkers();
+  setTimeout(()=>lmap.invalidateSize(),50);
+}
+
+/* ───────── SETTINGS MAP ───────── */
+function pick(ll){
+  $('#c-lat').value=ll.lat.toFixed(6); $('#c-lng').value=ll.lng.toFixed(6);
+  reverse(ll.lat,ll.lng).then(r=>{ $('#c-name').value=r.addr; $('#c-city').value=r.city; $('#c-country').value=r.country; });
+}
+function initLocMap(){
+  if(lsMap){ lsMap.invalidateSize(); return; }
+  const c=activeLoc(); const start=c.lat!=null?[c.lat,c.lng]:[20,0];
+  lsMap=L.map('loc-map',{zoomControl:false}).setView(start,c.lat!=null?13:2);
+  L.tileLayer(TILES.street.url,{attribution:TILES.street.attr,maxZoom:19,subdomains:'abcd'}).addTo(lsMap);
+  lsMarker=L.marker(start,{draggable:true}).addTo(lsMap);
+  lsMarker.on('dragend',()=>pick(lsMarker.getLatLng()));
+  lsMap.on('click',e=>{ lsMarker.setLatLng(e.latlng); pick(e.latlng); });
+}
+
+/* ───────── LIQUID DOCK (tap / drag / long press) ───────── */
+let press=null, currentBtn=null;
+function moveBlob(btn){
+  const blob=$('#blob'); const dock=$('#dock');
+  const x=btn.offsetLeft+(btn.offsetWidth-blob.offsetWidth)/2;
+  blob.style.transform=`translateX(${x}px)`;
+  currentBtn=btn;
+}
+function showTab(tab){
+  $$('.screen').forEach(s=>s.classList.toggle('active',s.id===tab));
+  const btn=document.querySelector(`.nav-btn[data-tab="${tab}"]`);
+  $$('.nav-btn').forEach(b=>b.classList.toggle('active',b===btn));
+  moveBlob(btn);
+  if(tab==='mapscr') initMap();
+  if(tab==='gallery') renderGallery();
+  if(tab==='templates') renderTemplates();
+  if(tab==='settings'){ setTimeout(initLocMap,120); updateCurVal(); }
+  if(tab==='camera') refreshPreview();
+}
+function bindDock(){
+  const dock=$('#dock'), label=$('#nav-label');
+  dock.addEventListener('pointerdown',e=>{
+    const btn=e.target.closest('.nav-btn'); if(!btn) return;
+    press={btn, x0:e.clientX, moved:false, target:null};
+    dock.setPointerCapture(e.pointerId);
+    wobble();
+    press.lt=setTimeout(()=>{
+      if(press && !press.moved){ dock.classList.add('long'); label.textContent=btn.getAttribute('aria-label'); }
+    },350);
+  });
+  dock.addEventListener('pointermove',e=>{
+    if(!press) return;
+    if(Math.abs(e.clientX-press.x0)>6){ press.moved=true; clearTimeout(press.lt); }
+    if(press.moved){
+      const r=dock.getBoundingClientRect();
+      const bw=$('#blob').offsetWidth;
+      let x=e.clientX-r.left-bw/2; x=Math.max(8,Math.min(r.width-bw-8,x));
+      const blob=$('#blob'); blob.style.transition='none'; blob.style.transform=`translateX(${x}px)`;
+      const under=document.elementFromPoint(e.clientX,e.clientY)?.closest?.('.nav-btn');
+      if(under) press.target=under;
+    }
+  });
+  const end=()=>{
+    if(!press) return;
+    clearTimeout(press.lt);
+    const target = press.moved ? (press.target||press.btn) : press.btn;
+    dock.classList.remove('long'); label.textContent='';
+    $('#blob').style.transition='';
+    showTab(target.dataset.tab);
+    press=null;
+  };
+  dock.addEventListener('pointerup',end);
+  dock.addEventListener('pointercancel',end);
+}
+
+/* ───────── EVENTS ───────── */
+function bindAll(){
+  bindDock();
+  const sh=$('#shutter');
+  sh.addEventListener('pointerdown',()=>{ sh.classList.add('press'); wobble(); });
+  ['pointerup','pointerleave','pointercancel'].forEach(ev=>sh.addEventListener(ev,()=>sh.classList.remove('press')));
+  sh.addEventListener('click',capture);
+
+  $('#flip-btn').onclick=()=>{ S.facing = S.facing==='environment'?'user':'environment'; startCam(); };
+  $$('.zoom-row button').forEach(b=>b.onclick=()=>{
+    S.zoom=+b.dataset.zoom; $$('.zoom-row button').forEach(x=>x.classList.toggle('on',x===b)); applyVideoTransform();
+  });
+
+  $('#tpl-grid').onclick=e=>{
+    const t=e.target.closest('.tpl'); if(!t) return;
+    S.tpl=+t.dataset.t; renderTemplates(); refreshPreview(); toast(`${TPL_NAMES[S.tpl]} select hua`);
+  };
+
+  $('#grid').onclick=e=>{ const t=e.target.closest('.thumb'); if(t) openModal(+t.dataset.i); };
+  $('#clear-btn').onclick=()=>{ if(!S.photos.length) return; if(confirm(`Sabhi ${S.photos.length} photos delete karein?`)){ S.photos=[]; renderGallery(); updateCurVal(); toast('Gallery saaf ho gayi'); } };
+
+  $('#m-close').onclick=closeModal;
+  $('#modal').onclick=e=>{ if(e.target.id==='modal') closeModal(); };
+  $('#m-dl').onclick=()=>{ const p=S.photos[S.sel]; if(!p) return; const a=document.createElement('a'); a.href=p.url; a.download=`geotag_${p.id}.jpg`; a.click(); toast('Download shuru'); };
+  $('#m-del').onclick=()=>{ S.photos.splice(S.sel,1); closeModal(); renderGallery(); updateCurVal(); toast('Photo delete hui'); };
+
+  $$('#layer-seg button').forEach(b=>b.onclick=()=>setLayer(b.dataset.l));
+
+  $$('[data-flag]').forEach(b=>{
+    b.classList.toggle('on',!!S.flags[b.dataset.flag]);
+    b.onclick=()=>{ S.flags[b.dataset.flag]=!S.flags[b.dataset.flag]; b.classList.toggle('on',S.flags[b.dataset.flag]); refreshPreview(); renderTemplates(); };
+  });
+  $('#author').oninput=e=>{ S.author=e.target.value; refreshPreview(); renderTemplates(); };
+  $$('[data-unit]').forEach(b=>b.onclick=()=>{
+    S.unit=b.dataset.unit; $$('[data-unit]').forEach(x=>x.classList.toggle('on',x===b)); refreshPreview(); renderTemplates();
+  });
+
+  ['c-lat','c-lng'].forEach(id=>$('#'+id).addEventListener('input',()=>{
+    const la=parseFloat($('#c-lat').value), ln=parseFloat($('#c-lng').value);
+    if(!isNaN(la)&&!isNaN(ln)&&lsMarker){ lsMarker.setLatLng([la,ln]); lsMap.setView([la,ln],13); }
+  }));
+  $('#apply-loc').onclick=()=>{
+    const la=parseFloat($('#c-lat').value), ln=parseFloat($('#c-lng').value);
+    if(isNaN(la)||isNaN(ln)){ toast('Latitude aur longitude daalein'); return; }
+    S.custom={lat:la,lng:ln,addr:$('#c-name').value||`${la.toFixed(5)}, ${ln.toFixed(5)}`,city:$('#c-city').value,country:$('#c-country').value};
+    refreshMap(); updateCurVal(); showTab('camera'); toast('Custom location lag gayi');
+  };
+  $('#use-gps').onclick=()=>{ S.custom=null; refreshMap(); updateCurVal(); toast('GPS location use ho rahi hai'); };
+}
+
+/* ───────── INIT ───────── */
+async function init(){
+  hydrate();
+  try{ await document.fonts.load('600 40px Outfit'); }catch(e){}
+  bindAll();
+  renderGallery(); renderTemplates(); updateCurVal();
+  startCam(); initGeo();
+  refreshPreview(); setInterval(refreshPreview,1000);
+  moveBlob($('.nav-btn.active'));
+  window.addEventListener('resize',()=>{ if(currentBtn) moveBlob(currentBtn); });
+}
+init();
+</script>
+</body>
+</html>
